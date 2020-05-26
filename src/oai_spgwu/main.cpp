@@ -97,6 +97,7 @@ int my_check_redundant_process(char* exec_name){
 //------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
+  // Checking if another instance of SPGW-U is running
   int nb_processes = my_check_redundant_process(argv[0]);
   if (nb_processes > 1) {
      std::cout << "An instance of " << argv[0] << "is maybe already called!" << std::endl;
