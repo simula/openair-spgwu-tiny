@@ -78,7 +78,7 @@ int my_check_redundant_process(char* exec_name){
   // Retrieving only the executable name
   boost::split(words, exec_name, boost::is_any_of("/"));
   memset(cmd,1,200);
-  sprintf(cmd,"ps aux | grep -v grep | grep -c %s", words[words.size() - 1].c_str());
+  sprintf(cmd,"ps aux | grep -v grep | grep -v nohup | grep -c %s", words[words.size() - 1].c_str());
   fp=popen(cmd,"r");
 
   // clearing the buffer
