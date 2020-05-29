@@ -64,7 +64,6 @@ void my_app_signal_handler(int s){
   std::cout << "Freeing Allocated memory done" << std::endl;
   exit(0);
 }
-
 //------------------------------------------------------------------------------
 // We are doing a check to see if an existing process already runs this program.
 // We have seen that running at least twice this program in a container may lead
@@ -95,7 +94,6 @@ int my_check_redundant_process(char* exec_name){
   free(cmd);
   return result;
 }
-
 //------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
