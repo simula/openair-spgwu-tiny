@@ -55,7 +55,7 @@ install_fmt() {
     git clone https://github.com/fmtlib/fmt.git
     ret=$?;[[ $ret -ne 0 ]] && return $ret
     cd fmt
-    cmake .
+    $CMAKE .
     ret=$?;[[ $ret -ne 0 ]] && return $ret
     make -j `nproc`
     ret=$?;[[ $ret -ne 0 ]] && return $ret
@@ -69,6 +69,7 @@ install_fmt() {
 #arg1 is force (0 or 1) (no interactive script)
 #arg2 is debug (0 or 1) (install debug libraries)
 install_spdlog_from_git() {
+  echo_info "Starting to install spdlog from source"
   if [ $1 -eq 0 ]; then
     read -p "Do you want to install spdlog ? <y/N> " prompt
     OPTION=""
@@ -101,20 +102,20 @@ install_spdlog_from_git() {
     sed -i '/#define SPDLOG_ENABLE_SYSLOG/s/^\/\///g' include/spdlog/tweakme.h
     popd
   fi
+  echo_success "End of spdlog installation"
   return 0
 }
-
-
 
 #-------------------------------------------------------------------------------
 #arg1 is force (0 or 1) (no interactive script)
 #arg2 is debug (0 or 1) (install debug libraries)
-check_install_spgwc_deps() {
-
-  if [ $1 -gt 0 ]; then
-    OPTION="-y"
-  else
+install_nlohmann_from_git() {
+  if [ $1 -eq 0 ]; then
+    read -p "Do you want to install Nlohmann Json ? <y/N> " prompt
     OPTION=""
+  else
+    prompt='y'
+    OPTION="-y"
   fi
   if [ $2 -eq 0 ]; then
     debug=0
@@ -122,213 +123,33 @@ check_install_spgwc_deps() {
     debug=1
   fi
 
-  echo "Check supported distribution"
-  check_supported_distribution
-  [[ $? -ne 0 ]] && return $?
 
-  # prevent lock on /var/lib/dpkg/lock
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    #$SUDO systemctl mask apt-daily.service
-    #$SUDO systemctl mask apt-daily.timer
-    #$SUDO systemctl mask apt-daily-upgrade.service
-    #$SUDO systemctl mask apt-daily-upgrade.timer
-    $SUDO sed -i 's/1/0/g' /etc/apt/apt.conf.d/10periodic
+  if [[ $prompt =~ [yY](es)* ]]
+  then
+    GIT_URL=https://github.com/nlohmann/json.git
+    echo "Install Nlohmann Json from $GIT_URL"
+    pushd $OPENAIRCN_DIR/build/ext
+    echo "Downloading Nlohmann"
+    if [[ $OPTION =~ -[yY](es)* ]]
+    then
+      $SUDO rm -rf json
+    fi
+
+    git clone $GIT_URL
+    cd json && git checkout -f v3.10.3
+    ret=$?;[[ $ret -ne 0 ]] && popd && return $ret
+    mkdir _build && cd _build
+    $CMAKE  -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DJSON_BuildTests=OFF ..
+    ret=$?;[[ $ret -ne 0 ]] && popd && return $ret
+    make
+    ret=$?;[[ $ret -ne 0 ]] && popd && return $ret
+    $SUDO make install
+    ret=$?;[[ $ret -ne 0 ]] && popd && return $ret
+    popd
   fi
-
-  update_package_db
-
-
-  check_enable_epel_repos
-
-  # Compilers, generators, ...
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    PACKAGE_LIST="\
-      autoconf \
-      automake \
-      bison \
-      build-essential \
-      cmake \
-      daemon \
-      doxygen \
-      flex \
-      gdb \
-      git"
-  elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
-    PACKAGE_LIST="\
-      autoconf \
-      automake \
-      bison \
-      $CMAKE \
-      flex \
-      gdb \
-      git"
-  else
-    echo_fatal "$OS_DISTRO is not a supported distribution."
-  fi
-  echo "Install build tools"
-  $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-
-  # Libraries
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    case "$(get_distribution_release)" in
-      "ubuntu18.04")
-        specific_packages="libconfig++-dev libasio-dev libboost-all-dev"
-      ;;
-    esac
-    # removed libspdlog-dev
-    PACKAGE_LIST="\
-      $specific_packages \
-      guile-2.0-dev \
-      libcurl4-gnutls-dev \
-      libevent-dev \
-      libgcrypt11-dev \
-      libgmp-dev \
-      libhogweed? \
-      libidn2-0-dev \
-      libidn11-dev \
-      libpthread-stubs0-dev \
-      libssl-dev \
-      libtool \
-      libxml2 \
-      libxml2-dev \
-      openssl \
-      python \
-      pkg-config"
-  elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
-    PACKAGE_LIST="\
-      guile-devel \
-      libconfig-devel \
-      libgcrypt-devel \
-      gmp-devel \
-      libidn2-devel \
-      libidn-devel \
-      lksctp-tools \
-      lksctp-tools-devel \
-      openssl-devel \
-      libtool \
-      libxml2 \
-      libxml2-devel \
-      openssl \
-      check \
-      python2 \
-      pkgconfig"
-  else
-    echo_fatal "$OS_DISTRO is not a supported distribution."
-  fi
-  echo "Install distro libs"
-  $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-  # Use fmt lib included in spdlog
-  #install_fmt $1
-  #ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-  install_fb_folly_from_source $1 $2
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-  install_spdlog_from_git $1 $2
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
   return 0
 }
-#-------------------------------------------------------------------------------
-#arg1 is force (0 or 1) (no interactive script)
-#arg2 is debug (0 or 1) (install debug libraries)
-check_install_spgwc_min_deps() {
 
-  if [ $1 -gt 0 ]; then
-    OPTION="-y"
-  else
-    OPTION=""
-  fi
-  if [ $2 -eq 0 ]; then
-    debug=0
-  else
-    debug=1
-  fi
-
-  echo "Check supported distribution"
-  check_supported_distribution
-  [[ $? -ne 0 ]] && return $?
-
-  # prevent lock on /var/lib/dpkg/lock
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    #$SUDO systemctl mask apt-daily.service
-    #$SUDO systemctl mask apt-daily.timer
-    #$SUDO systemctl mask apt-daily-upgrade.service
-    #$SUDO systemctl mask apt-daily-upgrade.timer
-    $SUDO sed -i 's/1/0/g' /etc/apt/apt.conf.d/10periodic
-  fi
-
-  update_package_db
-
-  check_enable_epel_repos
-
-  # Compilers, generators, ...
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    PACKAGE_LIST="\
-      gdb"
-  elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
-    PACKAGE_LIST="\
-      gdb"
-  else
-    echo_fatal "$OS_DISTRO is not a supported distribution."
-  fi
-  echo "Install build tools"
-  $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-
-  # Libraries
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    case "$(get_distribution_release)" in
-      "ubuntu18.04")
-        specific_packages="libconfig++-dev libasio-dev libboost-all-dev"
-      ;;
-    esac
-    # removed libspdlog-dev
-    PACKAGE_LIST="\
-      libtool"
-  elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
-    PACKAGE_LIST="\
-      libtool"
-  else
-    echo_fatal "$OS_DISTRO is not a supported distribution."
-  fi
-  echo "Install distro libs"
-  $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-  # Networking
-  if [[ $OS_DISTRO == "ubuntu" ]]; then
-    case "$(get_distribution_release)" in
-  "ubuntu18.04")
-      specific_packages="iproute2"
-      ;;
-    esac
-    PACKAGE_LIST="\
-      $specific_packages \
-      ethtool \
-      iptables \
-      vlan"
-  elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
-    PACKAGE_LIST="\
-      ethtool \
-      iperf \
-      iproute \
-      iptables \
-      vconfig"
-  else
-    echo_fatal "$OS_DISTRO is not a supported distribution."
-  fi
-  echo "Install networking tools"
-  $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
-  ret=$?;[[ $ret -ne 0 ]] && return $ret
-
-  return 0
-}
 
 #-------------------------------------------------------------------------------
 #arg1 is force (0 or 1) (no interactive script)
@@ -370,10 +191,11 @@ check_install_spgwu_deps() {
       automake \
       bison \
       build-essential \
-      cmake \
+      $CMAKE \
       doxygen \
       flex \
       gdb \
+      wget \
       git"
   elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
     PACKAGE_LIST="\
@@ -382,6 +204,7 @@ check_install_spgwu_deps() {
       bison \
       $CMAKE \
       cppcheck \
+      procps-ng \
       flex \
       gdb \
       git"
@@ -396,9 +219,17 @@ check_install_spgwu_deps() {
   # Libraries
   if [[ $OS_DISTRO == "ubuntu" ]]; then
     case "$(get_distribution_release)" in
-  "ubuntu18.04")
-      specific_packages="libconfig++-dev libasio-dev libboost-all-dev"
-      ;;
+      "ubuntu18.04")
+        # Currently Ubuntu18.04 has boost 1.65 as the latest
+        # We need at least 1.66
+        # PPA has 1.67
+        $SUDO add-apt-repository ppa:mhier/libboost-latest --yes
+        $SUDO $INSTALLER update
+        specific_packages="libconfig++-dev libboost1.67-dev"
+        ;;
+      *)
+        specific_packages="libconfig++-dev libasio-dev libboost-all-dev"
+        ;;
     esac
     # removed libspdlog-dev
     PACKAGE_LIST="\
@@ -418,14 +249,24 @@ check_install_spgwu_deps() {
       libxml2-dev \
       openssl \
       python \
+      libcurl4 \
+      wget \
       pkg-config"
   elif [[ "$OS_BASEDISTRO" == "fedora" ]]; then
+    case "$(get_distribution_release)" in
+      "centos8")
+         specific_packages="libidn2-devel"
+         ;;
+      "rhel8.2")
+         specific_packages=""
+         ;;
+    esac
     PACKAGE_LIST="\
+      $specific_packages \
       guile-devel \
       libconfig-devel \
       libgcrypt-devel \
       gmp-devel \
-      libidn2-devel \
       libidn-devel \
       lksctp-tools \
       lksctp-tools-devel \
@@ -436,6 +277,7 @@ check_install_spgwu_deps() {
       openssl \
       check \
       python2 \
+      libcurl-devel \
       pkgconfig"
   else
     echo_fatal "$OS_DISTRO is not a supported distribution."
@@ -444,6 +286,7 @@ check_install_spgwu_deps() {
   $SUDO $INSTALLER install $OPTION $PACKAGE_LIST
   ret=$?;[[ $ret -ne 0 ]] && return $ret
 
+  echo_info "Packages and Libraries installation finished!"
 
   # Use fmt lib included in spdlog
   #install_fmt $1
@@ -453,6 +296,9 @@ check_install_spgwu_deps() {
   ret=$?;[[ $ret -ne 0 ]] && return $ret
 
   install_spdlog_from_git $1 $2
+  ret=$?;[[ $ret -ne 0 ]] && return $ret
+  
+  install_nlohmann_from_git $1 $2
   ret=$?;[[ $ret -ne 0 ]] && return $ret
 
   return 0
